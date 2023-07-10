@@ -41,7 +41,7 @@ def test(args, model, device, test_loader):
             correct += pred.eq(target.view_as(pred)).sum().item()
             # update confusion matrix
             conf_matrix = conf_matrix + metrics.confusion_matrix(
-                          target.cpu(),pred.cpu(),labels=list(range(22)))
+                          target.cpu(),pred.cpu(),labels=list(range(21)))
             
         # print confusion matrix
         np.set_printoptions(precision=4, suppress=True)
