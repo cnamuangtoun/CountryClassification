@@ -1,8 +1,3 @@
-"""
-   kuzu_main.py
-   COMP9444, CSE, UNSW
-"""
-
 from __future__ import print_function
 import argparse
 import torch
@@ -11,13 +6,14 @@ import torch.nn.functional as F
 import torch.optim as optim
 import sklearn.metrics as metrics
 import numpy as np
+from tqdm import tqdm
 from dataset import load_dataset, GeoDatset, make_x_y
 from torch.utils.data import DataLoader
 from model import CNN_model
     
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
+    for batch_idx, (data, target) in tqdm(enumerate(train_loader)):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
@@ -33,7 +29,7 @@ def test(args, model, device, test_loader):
     model.eval()
     test_loss = 0
     correct = 0
-    conf_matrix = np.zeros((10,10)) # initialize confusion matrix
+    conf_matrix = np.zeros((21,21)) # initialize confusion matrix
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
