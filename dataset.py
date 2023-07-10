@@ -33,15 +33,7 @@ def load_dataset(dir):
     return train_fpaths, train_labels, val_fpaths, val_labels
 
 class GeoDatset(Dataset):
-    """Face Landmarks dataset."""
     def __init__(self, X, y):
-        """
-        Arguments:
-            csv_file (string): Path to the csv file with annotations.
-            root_dir (string): Directory with all the images.
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
-        """
         self.X = X
         self.y = y
         self.convert_tensor = transforms.ToTensor()
