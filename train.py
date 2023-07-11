@@ -79,11 +79,11 @@ def main():
     train_X, train_y, val_X, val_y = load_dataset(args.dataset)
 
     train_dataset = GeoDatset(train_X, train_y)
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True,collate_fn=make_x_y_train)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True,collate_fn=make_x_y_train, num_workers=32)
 
     # fetch and load test data
     val_dataset = GeoDatset(val_X, val_y)
-    test_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, collate_fn=make_x_y_val)
+    test_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, collate_fn=make_x_y_val, num_workers=32)
 
     net = CNN_model().to(device)
 
