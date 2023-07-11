@@ -1,3 +1,8 @@
+"""
+   kuzu_main.py
+   COMP9444, CSE, UNSW
+"""
+
 from __future__ import print_function
 import argparse
 import torch
@@ -7,7 +12,7 @@ import torch.optim as optim
 import sklearn.metrics as metrics
 import numpy as np
 from tqdm import tqdm
-from dataset import load_dataset, GeoDatset, make_x_y
+from dataset import load_dataset, GeoDatset, make_x_y_train, make_x_y_val
 from torch.utils.data import DataLoader
 from model import CNN_model
     
@@ -60,7 +65,7 @@ def main():
     parser.add_argument('--dataset',type=str,default="Dataset",help='directory of dataset')
     parser.add_argument('--lr',type=float,default=0.001,help='learning rate')
     parser.add_argument('--mom',type=float,default=0.8,help='momentum')
-    parser.add_argument('--epochs',type=int,default=10,help='number of training epochs')
+    parser.add_argument('--epochs',type=int,default=1000,help='number of training epochs')
     parser.add_argument('--no_cuda',action='store_true',default=False,help='disables CUDA')
     args = parser.parse_args()
 
@@ -74,11 +79,11 @@ def main():
     train_X, train_y, val_X, val_y = load_dataset(args.dataset)
 
     train_dataset = GeoDatset(train_X, train_y)
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True,collate_fn=make_x_y)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True,collate_fn=make_x_y_train)
 
     # fetch and load test data
     val_dataset = GeoDatset(val_X, val_y)
-    test_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, collate_fn=make_x_y)
+    test_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, collate_fn=make_x_y_val)
 
     net = CNN_model().to(device)
 
