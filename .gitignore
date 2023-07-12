@@ -1,2 +1,5 @@
 Dataset/*
 .DS_Store
+best_model.pth
+__pycache__/*
+resnet/*
