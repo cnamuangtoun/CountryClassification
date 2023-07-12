@@ -1,100 +1,144 @@
-"""
-   kuzu_main.py
-   COMP9444, CSE, UNSW
-"""
-
-from __future__ import print_function
 import argparse
+
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import sklearn.metrics as metrics
-import numpy as np
 from tqdm import tqdm
-from dataset import load_dataset, GeoDatset, make_x_y_train, make_x_y_val
+from tqdm import tqdm
+import torch.optim as optim
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from model import CNN_model
-    
-def train(args, model, device, train_loader, optimizer, epoch):
-    model.train()
-    for batch_idx, (data, target) in tqdm(enumerate(train_loader)):
-        data, target = data.to(device), target.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = F.nll_loss(output, target)
-        loss.backward()
-        optimizer.step()
-        if batch_idx % 100 == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item()))
+from sklearn.metrics import confusion_matrix
+import torch.optim.lr_scheduler as lr_scheduler
 
-def test(args, model, device, test_loader):
-    model.eval()
-    test_loss = 0
-    correct = 0
-    conf_matrix = np.zeros((21,21)) # initialize confusion matrix
-    with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            # sum up batch loss
-            test_loss += F.nll_loss(output, target, reduction='sum').item()
-            # determine index with maximal log-probability
-            pred = output.argmax(dim=1, keepdim=True)
-            correct += pred.eq(target.view_as(pred)).sum().item()
-            # update confusion matrix
-            conf_matrix = conf_matrix + metrics.confusion_matrix(
-                          target.cpu(),pred.cpu(),labels=list(range(21)))
-            
-        # print confusion matrix
-        np.set_printoptions(precision=4, suppress=True)
-        print(type(conf_matrix))
-        print(conf_matrix)
+import config
+from model import *
+from dataset import load_dataset, Collator, GeoDatset
 
-    test_loss /= len(test_loader.dataset)
 
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
 
 def main():
-    # command-line arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset',type=str,default="Dataset",help='directory of dataset')
-    parser.add_argument('--lr',type=float,default=0.001,help='learning rate')
-    parser.add_argument('--mom',type=float,default=0.8,help='momentum')
-    parser.add_argument('--epochs',type=int,default=1000,help='number of training epochs')
-    parser.add_argument('--no_cuda',action='store_true',default=False,help='disables CUDA')
-    args = parser.parse_args()
 
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
+    if config.model == "resnet":
+        model = ResNet18(config.num_classes)
+        input_size = 224
+    elif config.model == "custom_cnn":
+        model = CNN_model()
+        input_size = 224
+    elif config.model == "vit":
+        model = ViT()
+        input_size = 256
+    else:
+        print("Please choose models from [resnet, custom_cnn, vit]")
+        exit()
 
-    device = torch.device('cuda' if use_cuda else 'cpu')
 
-    kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
+    device = torch.device('cuda' if torch.cuda.is_available(
+    ) else 'mps' if torch.backends.mps.is_available()else 'cpu')
 
-    # fetch and load training data
-    train_X, train_y, val_X, val_y = load_dataset(args.dataset)
+    model.to(device)
+
+    train_X, train_y, val_X, val_y = load_dataset(config.data_path)
+
+    collator_train = Collator(train=True, input_size=input_size)
+    collator_test = Collator(train=False, input_size=input_size)
 
     train_dataset = GeoDatset(train_X, train_y)
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True,collate_fn=make_x_y_train, num_workers=32)
+    train_loader = DataLoader(train_dataset, batch_size=config.batch_size,
+                              shuffle=True, collate_fn=collator_train)
 
-    # fetch and load test data
-    val_dataset = GeoDatset(val_X, val_y)
-    test_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, collate_fn=make_x_y_val, num_workers=32)
+    test_dataset = GeoDatset(val_X, val_y)
+    test_loader = DataLoader(test_dataset, batch_size=config.batch_size,
+                              shuffle=False, collate_fn=collator_test)
 
-    net = CNN_model().to(device)
 
-    if list(net.parameters()):
-        # use SGD optimizer
-        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.mom)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.AdamW(model.parameters(), lr=config.learning_rate)
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
 
-        # training and testing loop
-        for epoch in range(1, args.epochs + 1):
-            train(args, net, device, train_loader, optimizer, epoch)
-            test(args, net, device, test_loader)
-        
+
+    train_losses = []
+    train_accuracies = []
+    test_losses = []
+    test_accuracies = []
+
+
+    total_steps = len(train_loader)
+    highest_accuracy = 0
+    for epoch in range(config.num_epochs):
+        model.train()
+        pbar = tqdm(train_loader, total=total_steps,
+                    desc=f'Epoch {epoch+1}/{config.num_epochs}', unit='batch')
+        total_loss = 0
+        total_accuracy = 0
+        for images, labels in pbar:
+            images = images.to(device)
+            labels = labels.to(device)
+
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            total_accuracy += (outputs.argmax(1) == labels).sum().item()
+            total_loss += loss.item()
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            pbar.set_postfix({'Loss': loss.item()})
+        train_losses.append(total_loss / len(train_loader))
+        train_accuracies.append(total_accuracy / len(train_dataset))
+
+        model.eval()
+        with torch.no_grad():
+
+            total_loss = 0
+
+            all_predicted = []
+            all_labels = []
+            correct = 0
+            total = 0
+            testbar = tqdm(test_loader, total=len(test_loader),
+                        desc=f'Test', unit='batch')
+
+            for images, labels in testbar:
+                images = images.to(device)
+                labels = labels.to(device)
+
+                outputs = model(images)
+
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+                total_loss += criterion(outputs, labels).item()
+
+                all_predicted.extend(predicted.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+                testbar.set_postfix({'Accuracy': f'{100 * correct / total:.2f}%'})
+
+            test_losses.append(total_loss / len(test_loader))
+            test_accuracies.append(correct / total)
+
+            if correct / total > highest_accuracy:
+                highest_accuracy = correct / total
+                torch.save(model.state_dict(), 'best_model.pth')
+
+            confusion = confusion_matrix(all_labels, all_predicted)
+            print('Confusion Matrix:')
+            print(confusion)
+        scheduler.step()
+
+    plt.plot(range(config.num_epochs), train_losses, label='Train Loss')
+    plt.plot(range(config.num_epochs), test_losses, label='Test Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.savefig('loss.png')
+    plt.clf()
+
+    plt.plot(range(config.num_epochs), train_accuracies, label='Train Accuracy')
+    plt.plot(range(config.num_epochs), test_accuracies, label='Test Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.savefig('accuracy.png')
+
 if __name__ == '__main__':
     main()

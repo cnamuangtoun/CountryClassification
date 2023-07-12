@@ -9,11 +9,11 @@ from torch.utils.data import Dataset
 classes = [l for l in os.listdir("Dataset") if not l.startswith(".")]
 class_to_idx = {classes[i]: i for i in range(len(classes))}
 
-def load_dataset(dir):
+def load_dataset(dir, val_per_class=50):
     train_labels, train_fpaths = [], []
     val_labels, val_fpaths = [], []
     for fname in os.listdir(dir):
-        if fname.startswith("."):
+        if fname.startswith(".") or fname in ["train", "test"]:
             continue
         with open(os.path.join(dir, fname, f"{fname}.csv")) as f:
             lines = f.readlines()
@@ -25,7 +25,7 @@ def load_dataset(dir):
             label = fname
             _, _, fpath = line.strip().split(",")
             fpath = fpath.replace('"', '')
-            if i < 10:
+            if i < val_per_class:
                 val_fpaths.append(os.path.join(dir, fname, f"{fpath}.png"))
                 val_labels.append(label)
             else:
@@ -54,14 +54,24 @@ class GeoDatset(Dataset):
 
         return sample
 
-def make_x_y_train(batch):
+class Collator(object):
+    def __init__(self, train, input_size):
+        self.train = train
+        self.input_size = input_size
+    def __call__(self, batch):
+        if self.train:
+            return make_x_y_train(batch, self.input_size)
+        else:
+            return make_x_y_test(batch, self.input_size)
+
+def make_x_y_train(batch, input_size):
     X, y = zip(*batch)
 
     X = torch.stack(X)
     y = torch.stack(y)
 
     trans = torch.nn.Sequential(
-        transforms.RandomResizedCrop((224, 224)),
+        transforms.RandomResizedCrop(input_size, antialias=True),
         transforms.RandomRotation([0, 270]),
         transforms.RandomHorizontalFlip(0.5),
         transforms.RandomVerticalFlip(0.5),
@@ -74,15 +84,15 @@ def make_x_y_train(batch):
     X = trans(X)
     return X, y
 
-def make_x_y_val(batch):
+
+def make_x_y_test(batch, input_size):
     X, y = zip(*batch)
 
     X = torch.stack(X)
     y = torch.stack(y)
 
     trans = torch.nn.Sequential(
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
+        transforms.Resize(input_size, antialias=True),
         transforms.ConvertImageDtype(torch.float),
         transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
     )
