@@ -209,3 +209,41 @@ class ViT(nn.Module):
         x = self.to_latent(x)
         out = self.mlp_head(x)
         return out
+
+        
+        
+
+def vgg(num_classes):
+    model = torch.hub.load('pytorch/vision:v0.9.0',
+                           'vgg19', pretrained=False)
+    model.classifier[6] = nn.Linear(
+        model.classifier[6].in_features, num_classes)
+    return model
+
+
+def resxnet(num_classes):
+    '''
+    batch_size = 128
+    num_epochs = 100
+    learning_rate = 0.0005
+    adam
+    56.4%
+    '''
+    model = torch.hub.load('pytorch/vision:v0.9.0',
+                           'resnext50_32x4d', pretrained=True)
+    model.fc = nn.Linear(model.fc.in_features, num_classes)
+    return model
+
+
+def dense(num_classes):
+    '''
+    batch_size = 128
+    num_epochs = 100
+    learning_rate = 0.0005
+    adam
+    57.14%
+    '''
+    model = torch.hub.load('pytorch/vision:v0.9.0',
+                           'densenet121', pretrained=True)
+    model.classifier = nn.Linear(model.classifier.in_features, num_classes)
+    return model
